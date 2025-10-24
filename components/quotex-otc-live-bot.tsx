@@ -108,6 +108,8 @@ const OTC_ASSETS = [
   { id: "USDPKR_OTC", name: "USD/PKR (OTC)", category: "Emerging Markets OTC" },
   { id: "USDTRY_OTC", name: "USD/TRY (OTC)", category: "Emerging Markets OTC" },
   { id: "USDMXN_OTC", name: "USD/MXN (OTC)", category: "Emerging Markets OTC" },
+  { id: "MSFT_OTC", name: "Microsoft (OTC)", category: "Stocks OTC" },
+  { id: "FB_OTC", name: "Meta/Facebook (OTC)", category: "Stocks OTC" },
 ]
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
@@ -520,6 +522,12 @@ export function QuotexOTCLiveBot() {
                           {asset.name}
                         </SelectItem>
                       ))}
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground mt-2">Stocks OTC</div>
+                      {OTC_ASSETS.filter((a) => a.category === "Stocks OTC").map((asset) => (
+                        <SelectItem key={asset.id} value={asset.id}>
+                          {asset.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -803,6 +811,7 @@ export function QuotexOTCLiveBot() {
         )}
       </div>
 
+      {/* Live Chat Sidebar */}
       <div className="space-y-6">
         <Card className="p-6">
           <h3 className="font-semibold mb-4">Account Balance</h3>
@@ -841,6 +850,59 @@ export function QuotexOTCLiveBot() {
               <span className="text-sm text-muted-foreground">Win Rate</span>
               <span className="text-xl font-bold text-primary">{sessionStats.winRate.toFixed(1)}%</span>
             </div>
+          </div>
+        </Card>
+
+        {/* Live Chat Component */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Live Chat
+            </h3>
+            <Badge variant="outline">{onlineUsers} online</Badge>
+          </div>
+
+          <div ref={chatScrollRef} className="h-[400px] overflow-y-auto space-y-3 mb-4 p-3 bg-secondary/30 rounded-lg">
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`p-3 rounded-lg ${
+                  msg.user === "System"
+                    ? "bg-primary/10 border border-primary/20"
+                    : msg.user === "Signal Bot"
+                      ? "bg-purple-500/10 border border-purple-500/20"
+                      : "bg-secondary"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-1">
+                  <span className="font-semibold text-sm">{msg.user}</span>
+                  <span className="text-xs text-muted-foreground">{msg.timestamp}</span>
+                </div>
+                <p className="text-sm">{msg.message}</p>
+                {msg.signal && msg.asset && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Badge variant={msg.signal === "CALL" ? "default" : "destructive"} className="text-xs">
+                      {msg.signal}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{msg.asset}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              placeholder="Type a message..."
+              disabled={!isConnected}
+            />
+            <Button onClick={handleSendMessage} disabled={!isConnected || !newMessage.trim()}>
+              Send
+            </Button>
           </div>
         </Card>
       </div>
