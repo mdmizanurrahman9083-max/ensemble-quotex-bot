@@ -69,10 +69,36 @@ export async function POST(request: NextRequest) {
 
   const winProbability = confidence * 0.85 + Math.random() * 10
 
+  const volatility = 40 + Math.random() * 60
+  const avgCandleSize = atr * 10000 // Convert to pips
+
+  let nextCandleSize: "SMALL" | "MEDIUM" | "LARGE" | "VERY_LARGE" = "MEDIUM"
+  let nextCandleSizePips = avgCandleSize
+
+  if (volatility > 80 && marketStrength > 70) {
+    nextCandleSize = "VERY_LARGE"
+    nextCandleSizePips = avgCandleSize * (1.5 + Math.random() * 0.5)
+  } else if (volatility > 60 || marketStrength > 60) {
+    nextCandleSize = "LARGE"
+    nextCandleSizePips = avgCandleSize * (1.2 + Math.random() * 0.3)
+  } else if (volatility > 40) {
+    nextCandleSize = "MEDIUM"
+    nextCandleSizePips = avgCandleSize * (0.9 + Math.random() * 0.2)
+  } else {
+    nextCandleSize = "SMALL"
+    nextCandleSizePips = avgCandleSize * (0.5 + Math.random() * 0.4)
+  }
+
+  const rangeFactor = nextCandleSizePips / 10000
+  const nextCandleRange = {
+    low: basePrice - rangeFactor * (nextCandleDirection === "DOWN" ? 0.7 : 0.3),
+    high: basePrice + rangeFactor * (nextCandleDirection === "UP" ? 0.7 : 0.3),
+  }
+
   const predictions = {
-    CALL: `Strong bullish momentum detected on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. Multiple indicators confirm upward movement: RSI at ${rsi.toFixed(1)} (oversold), bullish EMA crossover, positive MACD histogram. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability.`,
-    PUT: `Bearish pressure identified on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. Technical indicators align for downward movement: RSI at ${rsi.toFixed(1)} (overbought), bearish EMA crossover, negative MACD histogram. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability.`,
-    NEUTRAL: `Mixed signals on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. RSI at ${rsi.toFixed(1)} is neutral. Next candle direction uncertain.`,
+    CALL: `Strong bullish momentum detected on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. Multiple indicators confirm upward movement: RSI at ${rsi.toFixed(1)} (oversold), bullish EMA crossover, positive MACD histogram. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`,
+    PUT: `Bearish pressure identified on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. Technical indicators align for downward movement: RSI at ${rsi.toFixed(1)} (overbought), bearish EMA crossover, negative MACD histogram. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`,
+    NEUTRAL: `Mixed signals on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. RSI at ${rsi.toFixed(1)} is neutral. Next candle direction uncertain with ${nextCandleSize.toLowerCase()} expected size.`,
   }
 
   return NextResponse.json({
@@ -106,6 +132,13 @@ export async function POST(request: NextRequest) {
     marketDirection,
     marketStrength: Number.parseFloat(marketStrength.toFixed(1)),
     momentum: Number.parseFloat(momentum.toFixed(1)),
+    nextCandleSize,
+    nextCandleSizePips: Number.parseFloat(nextCandleSizePips.toFixed(1)),
+    nextCandleRange: {
+      low: Number.parseFloat(nextCandleRange.low.toFixed(5)),
+      high: Number.parseFloat(nextCandleRange.high.toFixed(5)),
+    },
+    volatility: Number.parseFloat(volatility.toFixed(1)),
   })
 }
 

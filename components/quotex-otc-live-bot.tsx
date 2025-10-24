@@ -32,6 +32,7 @@ import useSWR from "swr"
 type Signal = "CALL" | "PUT" | "NEUTRAL"
 type MarketDirection = "BULLISH" | "BEARISH" | "SIDEWAYS"
 type CandleDirection = "UP" | "DOWN" | "NEUTRAL"
+type CandleSize = "SMALL" | "MEDIUM" | "LARGE" | "VERY_LARGE"
 
 interface OTCAsset {
   id: string
@@ -64,6 +65,10 @@ interface SignalData {
   marketDirection: MarketDirection
   marketStrength: number
   momentum: number
+  nextCandleSize: CandleSize
+  nextCandleSizePips: number
+  nextCandleRange: { low: number; high: number }
+  volatility: number
 }
 
 interface ChatMessage {
@@ -450,6 +455,33 @@ export function QuotexOTCLiveBot() {
     }
   }
 
+  const getCandleSizeDisplay = (size: CandleSize) => {
+    switch (size) {
+      case "VERY_LARGE":
+        return { text: "Very Large", color: "text-purple-500", bars: 4 }
+      case "LARGE":
+        return { text: "Large", color: "text-orange-500", bars: 3 }
+      case "MEDIUM":
+        return { text: "Medium", color: "text-yellow-500", bars: 2 }
+      case "SMALL":
+        return { text: "Small", color: "text-blue-500", bars: 1 }
+    }
+  }
+
+  const renderCandleSizeBars = (bars: number, color: string) => {
+    return (
+      <div className="flex items-end gap-1 h-16">
+        {[...Array(4)].map((_, i) => (
+          <div
+            key={i}
+            className={`w-3 rounded-t transition-all ${i < bars ? color.replace("text-", "bg-") : "bg-muted"}`}
+            style={{ height: `${((i + 1) / 4) * 100}%` }}
+          />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="grid lg:grid-cols-3 gap-6">
       {/* Main Trading Panel */}
@@ -687,14 +719,16 @@ export function QuotexOTCLiveBot() {
 
         {isConnected && currentSignal && (
           <Card className="p-8 bg-gradient-to-br from-purple-500/10 to-pink-500/10 border-2 border-purple-500/30">
-            <div className="text-center space-y-4">
+            <div className="space-y-6">
               <div className="flex items-center justify-center gap-2 mb-4">
                 <Zap className="w-6 h-6 text-purple-500" />
                 <h3 className="text-xl font-bold">Next Candle Prediction</h3>
               </div>
 
-              <div className="flex items-center justify-center gap-8">
-                <div className="flex flex-col items-center">
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Direction Prediction */}
+                <div className="flex flex-col items-center p-6 bg-background/50 rounded-xl border">
+                  <p className="text-sm text-muted-foreground mb-4">Direction</p>
                   {getCandleDirectionIcon(currentSignal.nextCandleDirection)}
                   <p
                     className={`text-4xl font-black mt-4 ${
@@ -707,27 +741,61 @@ export function QuotexOTCLiveBot() {
                   >
                     {currentSignal.nextCandleDirection}
                   </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-6xl font-black text-purple-500">
+                  <p className="text-3xl font-bold text-purple-500 mt-2">
                     {currentSignal.nextCandleProbability.toFixed(0)}%
                   </p>
-                  <p className="text-sm text-muted-foreground mt-2">Probability</p>
+                </div>
+
+                {/* Size Prediction */}
+                <div className="flex flex-col items-center p-6 bg-background/50 rounded-xl border">
+                  <p className="text-sm text-muted-foreground mb-4">Candle Size</p>
+                  {renderCandleSizeBars(
+                    getCandleSizeDisplay(currentSignal.nextCandleSize).bars,
+                    getCandleSizeDisplay(currentSignal.nextCandleSize).color,
+                  )}
+                  <p className={`text-4xl font-black mt-4 ${getCandleSizeDisplay(currentSignal.nextCandleSize).color}`}>
+                    {getCandleSizeDisplay(currentSignal.nextCandleSize).text.toUpperCase()}
+                  </p>
+                  <p className="text-2xl font-bold text-purple-500 mt-2">
+                    {currentSignal.nextCandleSizePips.toFixed(1)} pips
+                  </p>
+                </div>
+              </div>
+
+              {/* Candle Range Prediction */}
+              <div className="p-6 bg-background/50 rounded-xl border">
+                <p className="text-sm text-muted-foreground text-center mb-4">Predicted Price Range</p>
+                <div className="flex items-center justify-center gap-8">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">Low</p>
+                    <p className="text-2xl font-bold text-red-500">{currentSignal.nextCandleRange.low.toFixed(5)}</p>
+                  </div>
+                  <ArrowUp className="w-8 h-8 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground mb-1">High</p>
+                    <p className="text-2xl font-bold text-green-500">{currentSignal.nextCandleRange.high.toFixed(5)}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <Activity className="w-4 h-4 text-purple-500" />
+                  <p className="text-sm text-muted-foreground">
+                    Volatility:{" "}
+                    <span className="font-semibold text-purple-500">{currentSignal.volatility.toFixed(0)}%</span>
+                  </p>
                 </div>
               </div>
 
               <div className="pt-4 border-t border-purple-500/20">
-                <p className="text-sm text-muted-foreground">
-                  AI predicts the next 1-minute candle will close {currentSignal.nextCandleDirection.toLowerCase()} with{" "}
-                  {currentSignal.nextCandleProbability.toFixed(0)}% confidence
+                <p className="text-sm text-muted-foreground text-center">
+                  AI predicts the next 1-minute candle will close {currentSignal.nextCandleDirection.toLowerCase()} with
+                  a {getCandleSizeDisplay(currentSignal.nextCandleSize).text.toLowerCase()} body size of approximately{" "}
+                  {currentSignal.nextCandleSizePips.toFixed(1)} pips
                 </p>
               </div>
             </div>
           </Card>
         )}
 
-        {/* Loading State */}
         {isAnalyzing && !currentSignal && (
           <Card className="p-8">
             <div className="flex flex-col items-center justify-center space-y-4">
