@@ -40,7 +40,6 @@
 }
 
 .dark {
-  /* Updated dark theme colors for 1-minute signal bot with green accent */
   --background: oklch(0.08 0.01 240);
   --foreground: oklch(0.98 0 0);
   --card: oklch(0.12 0.01 240);
@@ -76,6 +75,7 @@
 }
 
 @theme inline {
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
