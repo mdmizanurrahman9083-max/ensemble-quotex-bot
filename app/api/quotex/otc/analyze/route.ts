@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { generateText } from "ai"
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -32,30 +31,7 @@ export async function POST(request: NextRequest) {
     supportResistance,
   )
 
-  let aiPrediction = ""
-  try {
-    const { text } = await generateText({
-      model: "openai/gpt-4o-mini",
-      prompt: `You are an expert trading analyst. Analyze this market data and provide a brief prediction (2-3 sentences):
-      
-Asset: ${asset}
-Signal: ${signalAnalysis.signal}
-Confidence: ${signalAnalysis.confidence}%
-Market Direction: ${signalAnalysis.marketDirection}
-RSI (1m): ${indicators1m.rsi.toFixed(1)}
-MACD Histogram: ${indicators1m.macd.histogram > 0 ? "Positive" : "Negative"}
-Market Structure: ${marketStructure.trend}
-Volume: ${volumeProfile.strength}
-Support: ${supportResistance.nearestSupport.toFixed(5)}
-Resistance: ${supportResistance.nearestResistance.toFixed(5)}
-
-Provide a concise trading prediction focusing on the next 1-minute candle direction and size.`,
-    })
-    aiPrediction = text
-  } catch (error) {
-    console.error("AI prediction error:", error)
-    aiPrediction = signalAnalysis.fallbackPrediction
-  }
+  const aiPrediction = signalAnalysis.fallbackPrediction
 
   return NextResponse.json({
     asset,
