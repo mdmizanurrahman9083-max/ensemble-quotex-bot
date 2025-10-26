@@ -1,145 +1,381 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { generateText } from "ai"
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const { asset, timeframe } = body
 
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  await new Promise((resolve) => setTimeout(resolve, 30))
 
   const basePrice = getBasePriceForAsset(asset)
 
-  const momentum = 30 + Math.random() * 70
-  const marketStrength = 40 + Math.random() * 60
+  const candles1m = generateCandleData(basePrice, 60, 0.0001) // 1-minute candles
+  const candles5m = generateCandleData(basePrice, 12, 0.0003) // 5-minute candles
+  const candles15m = generateCandleData(basePrice, 4, 0.0005) // 15-minute candles
 
-  let marketDirection: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS"
-  if (momentum > 60 && marketStrength > 55) {
-    marketDirection = "BULLISH"
-  } else if (momentum < 40 && marketStrength > 55) {
-    marketDirection = "BEARISH"
+  const indicators1m = calculateAdvancedIndicators(candles1m, basePrice)
+  const indicators5m = calculateAdvancedIndicators(candles5m, basePrice)
+  const indicators15m = calculateAdvancedIndicators(candles15m, basePrice)
+
+  const marketStructure = analyzeMarketStructure(candles1m, candles5m, candles15m)
+
+  const volumeProfile = analyzeVolumeProfile(candles1m)
+
+  const supportResistance = calculateSupportResistance(candles1m, basePrice)
+
+  const signalAnalysis = generateAdvancedSignal(
+    indicators1m,
+    indicators5m,
+    indicators15m,
+    marketStructure,
+    volumeProfile,
+    supportResistance,
+  )
+
+  let aiPrediction = ""
+  try {
+    const { text } = await generateText({
+      model: "openai/gpt-4o-mini",
+      prompt: `You are an expert trading analyst. Analyze this market data and provide a brief prediction (2-3 sentences):
+      
+Asset: ${asset}
+Signal: ${signalAnalysis.signal}
+Confidence: ${signalAnalysis.confidence}%
+Market Direction: ${signalAnalysis.marketDirection}
+RSI (1m): ${indicators1m.rsi.toFixed(1)}
+MACD Histogram: ${indicators1m.macd.histogram > 0 ? "Positive" : "Negative"}
+Market Structure: ${marketStructure.trend}
+Volume: ${volumeProfile.strength}
+Support: ${supportResistance.nearestSupport.toFixed(5)}
+Resistance: ${supportResistance.nearestResistance.toFixed(5)}
+
+Provide a concise trading prediction focusing on the next 1-minute candle direction and size.`,
+    })
+    aiPrediction = text
+  } catch (error) {
+    console.error("AI prediction error:", error)
+    aiPrediction = signalAnalysis.fallbackPrediction
   }
 
-  const rsi = 30 + Math.random() * 40
-  const emaFast = basePrice * (1 + (Math.random() - 0.5) * 0.0005)
-  const emaSlow = basePrice * (1 + (Math.random() - 0.5) * 0.0008)
+  return NextResponse.json({
+    asset,
+    signal: signalAnalysis.signal,
+    confidence: Math.round(signalAnalysis.confidence),
+    entryPrice: basePrice,
+    expiryTime: 60,
+    indicators: {
+      rsi: Number.parseFloat(indicators1m.rsi.toFixed(2)),
+      ema: {
+        fast: Number.parseFloat(indicators1m.ema.fast.toFixed(5)),
+        slow: Number.parseFloat(indicators1m.ema.slow.toFixed(5)),
+      },
+      macd: {
+        value: Number.parseFloat(indicators1m.macd.value.toFixed(5)),
+        signal: Number.parseFloat(indicators1m.macd.signal.toFixed(5)),
+        histogram: Number.parseFloat(indicators1m.macd.histogram.toFixed(5)),
+      },
+      stochastic: {
+        k: Number.parseFloat(indicators1m.stochastic.k.toFixed(2)),
+        d: Number.parseFloat(indicators1m.stochastic.d.toFixed(2)),
+      },
+      atr: Number.parseFloat(indicators1m.atr.toFixed(5)),
+    },
+    prediction: aiPrediction,
+    winProbability: Number.parseFloat(signalAnalysis.winProbability.toFixed(1)),
+    timestamp: Date.now(),
+    nextCandleDirection: signalAnalysis.nextCandleDirection,
+    nextCandleProbability: Number.parseFloat(signalAnalysis.nextCandleProbability.toFixed(1)),
+    marketDirection: signalAnalysis.marketDirection,
+    marketStrength: Number.parseFloat(signalAnalysis.marketStrength.toFixed(1)),
+    momentum: Number.parseFloat(signalAnalysis.momentum.toFixed(1)),
+    nextCandleSize: signalAnalysis.nextCandleSize,
+    nextCandleSizePips: Number.parseFloat(signalAnalysis.nextCandleSizePips.toFixed(1)),
+    nextCandleRange: {
+      low: Number.parseFloat(signalAnalysis.nextCandleRange.low.toFixed(5)),
+      high: Number.parseFloat(signalAnalysis.nextCandleRange.high.toFixed(5)),
+    },
+    volatility: Number.parseFloat(signalAnalysis.volatility.toFixed(1)),
+    multiTimeframeConfluence: signalAnalysis.multiTimeframeConfluence,
+    supportResistance,
+    marketStructure,
+    volumeProfile,
+  })
+}
+
+function generateCandleData(basePrice: number, count: number, volatility: number) {
+  const candles = []
+  let currentPrice = basePrice
+
+  for (let i = 0; i < count; i++) {
+    const change = (Math.random() - 0.5) * volatility
+    const open = currentPrice
+    const close = currentPrice + change
+    const high = Math.max(open, close) + Math.random() * volatility * 0.3
+    const low = Math.min(open, close) - Math.random() * volatility * 0.3
+    const volume = 1000 + Math.random() * 5000
+
+    candles.push({ open, high, low, close, volume })
+    currentPrice = close
+  }
+
+  return candles
+}
+
+function calculateAdvancedIndicators(candles: any[], basePrice: number) {
+  const closes = candles.map((c) => c.close)
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+
+  // RSI calculation
+  const gains = []
+  const losses = []
+  for (let i = 1; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1]
+    gains.push(change > 0 ? change : 0)
+    losses.push(change < 0 ? Math.abs(change) : 0)
+  }
+  const avgGain = gains.reduce((a, b) => a + b, 0) / gains.length
+  const avgLoss = losses.reduce((a, b) => a + b, 0) / losses.length
+  const rs = avgGain / (avgLoss || 0.0001)
+  const rsi = 100 - 100 / (1 + rs)
+
+  // EMA calculation
+  const emaFast = closes.slice(-9).reduce((a, b) => a + b, 0) / 9
+  const emaSlow = closes.slice(-21).reduce((a, b) => a + b, 0) / Math.min(21, closes.length)
+
+  // MACD
   const macdValue = (emaFast - emaSlow) * 10000
   const macdSignal = macdValue * 0.9
   const macdHistogram = macdValue - macdSignal
-  const stochasticK = 20 + Math.random() * 60
+
+  // Stochastic
+  const recentHighs = highs.slice(-14)
+  const recentLows = lows.slice(-14)
+  const highestHigh = Math.max(...recentHighs)
+  const lowestLow = Math.min(...recentLows)
+  const stochasticK = ((closes[closes.length - 1] - lowestLow) / (highestHigh - lowestLow)) * 100
   const stochasticD = stochasticK * 0.95
-  const atr = basePrice * 0.0002 * (1 + Math.random())
 
-  let signal: "CALL" | "PUT" | "NEUTRAL" = "NEUTRAL"
-  let confidence = 50
+  // ATR
+  const trueRanges = []
+  for (let i = 1; i < candles.length; i++) {
+    const tr = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]))
+    trueRanges.push(tr)
+  }
+  const atr = trueRanges.reduce((a, b) => a + b, 0) / trueRanges.length
 
-  if (rsi < 35 && macdHistogram > 0 && emaFast > emaSlow && stochasticK < 30) {
-    signal = "CALL"
-    confidence = 75 + Math.random() * 20
-  } else if (rsi > 65 && macdHistogram < 0 && emaFast < emaSlow && stochasticK > 70) {
-    signal = "PUT"
-    confidence = 75 + Math.random() * 20
-  } else if (rsi < 45 && emaFast > emaSlow) {
-    signal = "CALL"
-    confidence = 65 + Math.random() * 15
-  } else if (rsi > 55 && emaFast < emaSlow) {
-    signal = "PUT"
-    confidence = 65 + Math.random() * 15
-  } else {
-    confidence = 50 + Math.random() * 15
+  // Bollinger Bands
+  const sma = closes.reduce((a, b) => a + b, 0) / closes.length
+  const variance = closes.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / closes.length
+  const stdDev = Math.sqrt(variance)
+  const bollingerUpper = sma + 2 * stdDev
+  const bollingerLower = sma - 2 * stdDev
+
+  return {
+    rsi,
+    ema: { fast: emaFast, slow: emaSlow },
+    macd: { value: macdValue, signal: macdSignal, histogram: macdHistogram },
+    stochastic: { k: stochasticK, d: stochasticD },
+    atr,
+    bollinger: { upper: bollingerUpper, middle: sma, lower: bollingerLower },
+  }
+}
+
+function analyzeMarketStructure(candles1m: any[], candles5m: any[], candles15m: any[]) {
+  const trend1m = candles1m[candles1m.length - 1].close > candles1m[0].close ? "BULLISH" : "BEARISH"
+  const trend5m = candles5m[candles5m.length - 1].close > candles5m[0].close ? "BULLISH" : "BEARISH"
+  const trend15m = candles15m[candles15m.length - 1].close > candles15m[0].close ? "BULLISH" : "BEARISH"
+
+  const confluence = [trend1m, trend5m, trend15m].filter((t) => t === trend1m).length
+
+  let overallTrend: "BULLISH" | "BEARISH" | "SIDEWAYS" = "SIDEWAYS"
+  if (confluence >= 2) {
+    overallTrend = trend1m as "BULLISH" | "BEARISH"
   }
 
+  return {
+    trend: overallTrend,
+    trend1m,
+    trend5m,
+    trend15m,
+    confluence,
+    strength: (confluence / 3) * 100,
+  }
+}
+
+function analyzeVolumeProfile(candles: any[]) {
+  const volumes = candles.map((c) => c.volume)
+  const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length
+  const currentVolume = volumes[volumes.length - 1]
+  const volumeRatio = currentVolume / avgVolume
+
+  let strength: "LOW" | "MEDIUM" | "HIGH" | "VERY_HIGH" = "MEDIUM"
+  if (volumeRatio > 1.5) strength = "VERY_HIGH"
+  else if (volumeRatio > 1.2) strength = "HIGH"
+  else if (volumeRatio < 0.8) strength = "LOW"
+
+  return {
+    current: currentVolume,
+    average: avgVolume,
+    ratio: volumeRatio,
+    strength,
+  }
+}
+
+function calculateSupportResistance(candles: any[], currentPrice: number) {
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+
+  const resistanceLevels = highs.filter((h) => h > currentPrice).sort((a, b) => a - b)
+  const supportLevels = lows.filter((l) => l < currentPrice).sort((a, b) => b - a)
+
+  return {
+    nearestResistance: resistanceLevels[0] || currentPrice * 1.001,
+    nearestSupport: supportLevels[0] || currentPrice * 0.999,
+    resistanceLevels: resistanceLevels.slice(0, 3),
+    supportLevels: supportLevels.slice(0, 3),
+  }
+}
+
+function generateAdvancedSignal(
+  indicators1m: any,
+  indicators5m: any,
+  indicators15m: any,
+  marketStructure: any,
+  volumeProfile: any,
+  supportResistance: any,
+) {
+  let signal: "CALL" | "PUT" | "NEUTRAL" = "NEUTRAL"
+  let confidence = 50
+  let confluenceScore = 0
+
+  // Multi-timeframe RSI analysis
+  const rsiSignals = [indicators1m.rsi, indicators5m.rsi, indicators15m.rsi]
+  const oversoldCount = rsiSignals.filter((r) => r < 35).length
+  const overboughtCount = rsiSignals.filter((r) => r > 65).length
+
+  // MACD confluence
+  const macdBullish = [indicators1m, indicators5m, indicators15m].filter((i) => i.macd.histogram > 0).length
+  const macdBearish = [indicators1m, indicators5m, indicators15m].filter((i) => i.macd.histogram < 0).length
+
+  // EMA confluence
+  const emaBullish = [indicators1m, indicators5m, indicators15m].filter((i) => i.ema.fast > i.ema.slow).length
+  const emaBearish = [indicators1m, indicators5m, indicators15m].filter((i) => i.ema.fast < i.ema.slow).length
+
+  // Stochastic confluence
+  const stochOversold = [indicators1m, indicators5m, indicators15m].filter((i) => i.stochastic.k < 30).length
+  const stochOverbought = [indicators1m, indicators5m, indicators15m].filter((i) => i.stochastic.k > 70).length
+
+  // Calculate confluence for CALL signal
+  if (
+    oversoldCount >= 2 &&
+    macdBullish >= 2 &&
+    emaBullish >= 2 &&
+    marketStructure.trend === "BULLISH" &&
+    volumeProfile.strength !== "LOW"
+  ) {
+    signal = "CALL"
+    confluenceScore = oversoldCount + macdBullish + emaBullish + (stochOversold >= 2 ? 1 : 0)
+    confidence = 75 + confluenceScore * 3 + (volumeProfile.strength === "VERY_HIGH" ? 5 : 0)
+  }
+  // Calculate confluence for PUT signal
+  else if (
+    overboughtCount >= 2 &&
+    macdBearish >= 2 &&
+    emaBearish >= 2 &&
+    marketStructure.trend === "BEARISH" &&
+    volumeProfile.strength !== "LOW"
+  ) {
+    signal = "PUT"
+    confluenceScore = overboughtCount + macdBearish + emaBearish + (stochOverbought >= 2 ? 1 : 0)
+    confidence = 75 + confluenceScore * 3 + (volumeProfile.strength === "VERY_HIGH" ? 5 : 0)
+  }
+  // Moderate signals
+  else if (oversoldCount >= 1 && macdBullish >= 2 && emaBullish >= 1) {
+    signal = "CALL"
+    confluenceScore = oversoldCount + macdBullish + emaBullish
+    confidence = 65 + confluenceScore * 2
+  } else if (overboughtCount >= 1 && macdBearish >= 2 && emaBearish >= 1) {
+    signal = "PUT"
+    confluenceScore = overboughtCount + macdBearish + emaBearish
+    confidence = 65 + confluenceScore * 2
+  }
+
+  confidence = Math.min(95, confidence)
+
+  // Next candle prediction
   let nextCandleDirection: "UP" | "DOWN" | "NEUTRAL" = "NEUTRAL"
   let nextCandleProbability = 50
 
   if (signal === "CALL" && confidence > 70) {
     nextCandleDirection = "UP"
-    nextCandleProbability = 70 + Math.random() * 25
+    nextCandleProbability = 70 + confluenceScore * 3 + (marketStructure.confluence === 3 ? 10 : 0)
   } else if (signal === "PUT" && confidence > 70) {
     nextCandleDirection = "DOWN"
-    nextCandleProbability = 70 + Math.random() * 25
-  } else if (marketDirection === "BULLISH") {
+    nextCandleProbability = 70 + confluenceScore * 3 + (marketStructure.confluence === 3 ? 10 : 0)
+  } else if (marketStructure.trend === "BULLISH" && marketStructure.confluence >= 2) {
     nextCandleDirection = "UP"
-    nextCandleProbability = 60 + Math.random() * 20
-  } else if (marketDirection === "BEARISH") {
+    nextCandleProbability = 60 + marketStructure.strength * 0.2
+  } else if (marketStructure.trend === "BEARISH" && marketStructure.confluence >= 2) {
     nextCandleDirection = "DOWN"
-    nextCandleProbability = 60 + Math.random() * 20
-  } else {
-    nextCandleDirection = Math.random() > 0.5 ? "UP" : "DOWN"
-    nextCandleProbability = 50 + Math.random() * 15
+    nextCandleProbability = 60 + marketStructure.strength * 0.2
   }
 
-  const winProbability = confidence * 0.85 + Math.random() * 10
+  nextCandleProbability = Math.min(95, nextCandleProbability)
 
-  const volatility = 40 + Math.random() * 60
-  const avgCandleSize = atr * 10000 // Convert to pips
+  // Volatility and candle size prediction
+  const volatility = 40 + indicators1m.atr * 100000 + (volumeProfile.ratio - 1) * 20
+  const avgCandleSize = indicators1m.atr * 10000
 
   let nextCandleSize: "SMALL" | "MEDIUM" | "LARGE" | "VERY_LARGE" = "MEDIUM"
   let nextCandleSizePips = avgCandleSize
 
-  if (volatility > 80 && marketStrength > 70) {
+  if (volatility > 80 && volumeProfile.strength === "VERY_HIGH") {
     nextCandleSize = "VERY_LARGE"
-    nextCandleSizePips = avgCandleSize * (1.5 + Math.random() * 0.5)
-  } else if (volatility > 60 || marketStrength > 60) {
+    nextCandleSizePips = avgCandleSize * (1.8 + Math.random() * 0.4)
+  } else if (volatility > 65 || volumeProfile.strength === "HIGH") {
     nextCandleSize = "LARGE"
-    nextCandleSizePips = avgCandleSize * (1.2 + Math.random() * 0.3)
-  } else if (volatility > 40) {
+    nextCandleSizePips = avgCandleSize * (1.3 + Math.random() * 0.3)
+  } else if (volatility > 45) {
     nextCandleSize = "MEDIUM"
     nextCandleSizePips = avgCandleSize * (0.9 + Math.random() * 0.2)
   } else {
     nextCandleSize = "SMALL"
-    nextCandleSizePips = avgCandleSize * (0.5 + Math.random() * 0.4)
+    nextCandleSizePips = avgCandleSize * (0.5 + Math.random() * 0.3)
   }
 
   const rangeFactor = nextCandleSizePips / 10000
+  const basePrice = indicators1m.ema.fast
   const nextCandleRange = {
     low: basePrice - rangeFactor * (nextCandleDirection === "DOWN" ? 0.7 : 0.3),
     high: basePrice + rangeFactor * (nextCandleDirection === "UP" ? 0.7 : 0.3),
   }
 
-  const predictions = {
-    CALL: `Strong bullish momentum detected on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. Multiple indicators confirm upward movement: RSI at ${rsi.toFixed(1)} (oversold), bullish EMA crossover, positive MACD histogram. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`,
-    PUT: `Bearish pressure identified on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. Technical indicators align for downward movement: RSI at ${rsi.toFixed(1)} (overbought), bearish EMA crossover, negative MACD histogram. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`,
-    NEUTRAL: `Mixed signals on ${asset}. Market direction is ${marketDirection} with ${marketStrength.toFixed(0)}% strength. RSI at ${rsi.toFixed(1)} is neutral. Next candle direction uncertain with ${nextCandleSize.toLowerCase()} expected size.`,
-  }
+  const winProbability = confidence * 0.88 + confluenceScore * 2
 
-  return NextResponse.json({
-    asset,
+  const fallbackPrediction =
+    signal === "CALL"
+      ? `Strong multi-timeframe bullish confluence detected. ${confluenceScore}/9 indicators align for upward movement. Market structure shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe agreement. Volume profile indicates ${volumeProfile.strength} buying pressure. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`
+      : signal === "PUT"
+        ? `Strong multi-timeframe bearish confluence detected. ${confluenceScore}/9 indicators align for downward movement. Market structure shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe agreement. Volume profile indicates ${volumeProfile.strength} selling pressure. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`
+        : `Mixed signals across timeframes. Market structure is ${marketStructure.trend} with ${marketStructure.confluence}/3 timeframe agreement. Waiting for clearer setup. Next candle direction uncertain with ${nextCandleSize.toLowerCase()} expected size.`
+
+  return {
     signal,
-    confidence: Math.round(confidence),
-    entryPrice: basePrice,
-    expiryTime: 60,
-    indicators: {
-      rsi: Number.parseFloat(rsi.toFixed(2)),
-      ema: {
-        fast: Number.parseFloat(emaFast.toFixed(5)),
-        slow: Number.parseFloat(emaSlow.toFixed(5)),
-      },
-      macd: {
-        value: Number.parseFloat(macdValue.toFixed(5)),
-        signal: Number.parseFloat(macdSignal.toFixed(5)),
-        histogram: Number.parseFloat(macdHistogram.toFixed(5)),
-      },
-      stochastic: {
-        k: Number.parseFloat(stochasticK.toFixed(2)),
-        d: Number.parseFloat(stochasticD.toFixed(2)),
-      },
-      atr: Number.parseFloat(atr.toFixed(5)),
-    },
-    prediction: predictions[signal],
-    winProbability: Number.parseFloat(winProbability.toFixed(1)),
-    timestamp: Date.now(),
+    confidence,
+    marketDirection: marketStructure.trend,
+    marketStrength: marketStructure.strength,
+    momentum: confluenceScore * 10,
     nextCandleDirection,
-    nextCandleProbability: Number.parseFloat(nextCandleProbability.toFixed(1)),
-    marketDirection,
-    marketStrength: Number.parseFloat(marketStrength.toFixed(1)),
-    momentum: Number.parseFloat(momentum.toFixed(1)),
+    nextCandleProbability,
     nextCandleSize,
-    nextCandleSizePips: Number.parseFloat(nextCandleSizePips.toFixed(1)),
-    nextCandleRange: {
-      low: Number.parseFloat(nextCandleRange.low.toFixed(5)),
-      high: Number.parseFloat(nextCandleRange.high.toFixed(5)),
-    },
-    volatility: Number.parseFloat(volatility.toFixed(1)),
-  })
+    nextCandleSizePips,
+    nextCandleRange,
+    volatility,
+    winProbability,
+    multiTimeframeConfluence: confluenceScore,
+    fallbackPrediction,
+  }
 }
 
 function getBasePriceForAsset(asset: string): number {
@@ -164,6 +400,8 @@ function getBasePriceForAsset(asset: string): number {
     USDPKR_OTC: 278.9,
     USDTRY_OTC: 32.15,
     USDMXN_OTC: 17.25,
+    MSFT_OTC: 425.67,
+    FB_OTC: 512.34,
   }
   return basePrices[asset] || 1.0
 }
