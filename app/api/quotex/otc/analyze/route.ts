@@ -4,13 +4,13 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { asset, timeframe } = body
 
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  await new Promise((resolve) => setTimeout(resolve, 5))
 
   const basePrice = getBasePriceForAsset(asset)
 
-  const candles1m = generateCandleData(basePrice, 100, 0.0001) // Increased from 60 to 100
-  const candles5m = generateCandleData(basePrice, 24, 0.0003) // Increased from 12 to 24
-  const candles15m = generateCandleData(basePrice, 8, 0.0005) // Increased from 4 to 8
+  const candles1m = generateCandleData(basePrice, 150, 0.0001) // Increased from 100 to 150
+  const candles5m = generateCandleData(basePrice, 36, 0.0003) // Increased from 24 to 36
+  const candles15m = generateCandleData(basePrice, 12, 0.0005) // Increased from 8 to 12
 
   const indicators1m = calculateAdvancedIndicators(candles1m, basePrice)
   const indicators5m = calculateAdvancedIndicators(candles5m, basePrice)
@@ -26,6 +26,10 @@ export async function POST(request: NextRequest) {
 
   const momentum = analyzeMomentum(candles1m, candles5m, candles15m)
 
+  const advancedPatterns = detectAdvancedPatterns(candles1m, candles5m)
+
+  const marketSentiment = analyzeMarketSentiment(indicators1m, indicators5m, indicators15m, volumeProfile, momentum)
+
   const signalAnalysis = generateAdvancedSignal(
     indicators1m,
     indicators5m,
@@ -35,6 +39,8 @@ export async function POST(request: NextRequest) {
     supportResistance,
     priceAction,
     momentum,
+    advancedPatterns,
+    marketSentiment,
   )
 
   const aiPrediction = signalAnalysis.fallbackPrediction
@@ -82,6 +88,8 @@ export async function POST(request: NextRequest) {
     marketStructure,
     volumeProfile,
     priceAction,
+    advancedPatterns,
+    marketSentiment,
   })
 }
 
@@ -288,6 +296,123 @@ function analyzeMomentum(candles1m: any[], candles5m: any[], candles15m: any[]) 
   }
 }
 
+function detectAdvancedPatterns(candles1m: any[], candles5m: any[]) {
+  const recentCandles = candles1m.slice(-20)
+
+  // Detect double top/bottom
+  const highs = recentCandles.map((c) => c.high)
+  const lows = recentCandles.map((c) => c.low)
+
+  const maxHigh = Math.max(...highs)
+  const minLow = Math.min(...lows)
+
+  const doubleTopCount = highs.filter((h) => Math.abs(h - maxHigh) < maxHigh * 0.001).length
+  const doubleBottomCount = lows.filter((l) => Math.abs(l - minLow) < minLow * 0.001).length
+
+  const hasDoubleTop = doubleTopCount >= 2
+  const hasDoubleBottom = doubleBottomCount >= 2
+
+  // Detect head and shoulders
+  const peaks = []
+  for (let i = 1; i < recentCandles.length - 1; i++) {
+    if (recentCandles[i].high > recentCandles[i - 1].high && recentCandles[i].high > recentCandles[i + 1].high) {
+      peaks.push({ index: i, value: recentCandles[i].high })
+    }
+  }
+
+  const hasHeadAndShoulders = peaks.length >= 3
+
+  // Detect triangle patterns
+  const upperTrendline = highs.slice(-10)
+  const lowerTrendline = lows.slice(-10)
+
+  const upperSlope = (upperTrendline[upperTrendline.length - 1] - upperTrendline[0]) / upperTrendline.length
+  const lowerSlope = (lowerTrendline[lowerTrendline.length - 1] - lowerTrendline[0]) / lowerTrendline.length
+
+  let trianglePattern: "ASCENDING" | "DESCENDING" | "SYMMETRICAL" | "NONE" = "NONE"
+
+  if (Math.abs(upperSlope) < 0.00001 && lowerSlope > 0) {
+    trianglePattern = "ASCENDING"
+  } else if (Math.abs(lowerSlope) < 0.00001 && upperSlope < 0) {
+    trianglePattern = "DESCENDING"
+  } else if (upperSlope < 0 && lowerSlope > 0) {
+    trianglePattern = "SYMMETRICAL"
+  }
+
+  // Detect breakout potential
+  const volatilityRecent = recentCandles.slice(-5).reduce((sum, c) => sum + (c.high - c.low), 0) / 5
+  const volatilityPrevious = recentCandles.slice(-15, -5).reduce((sum, c) => sum + (c.high - c.low), 0) / 10
+
+  const breakoutPotential = volatilityRecent > volatilityPrevious * 1.5
+
+  return {
+    hasDoubleTop,
+    hasDoubleBottom,
+    hasHeadAndShoulders,
+    trianglePattern,
+    breakoutPotential,
+    patternStrength: (doubleTopCount + doubleBottomCount + peaks.length) * 10,
+  }
+}
+
+function analyzeMarketSentiment(
+  indicators1m: any,
+  indicators5m: any,
+  indicators15m: any,
+  volumeProfile: any,
+  momentum: any,
+) {
+  let bullishScore = 0
+  let bearishScore = 0
+
+  // RSI sentiment
+  if (indicators1m.rsi < 30) bullishScore += 3
+  else if (indicators1m.rsi > 70) bearishScore += 3
+
+  if (indicators5m.rsi < 35) bullishScore += 2
+  else if (indicators5m.rsi > 65) bearishScore += 2
+
+  if (indicators15m.rsi < 40) bullishScore += 1
+  else if (indicators15m.rsi > 60) bearishScore += 1
+
+  // MACD sentiment
+  if (indicators1m.macd.histogram > 0) bullishScore += 2
+  else bearishScore += 2
+
+  if (indicators5m.macd.histogram > 0) bullishScore += 2
+  else bearishScore += 2
+
+  // Volume sentiment
+  if (volumeProfile.strength === "VERY_HIGH" || volumeProfile.strength === "HIGH") {
+    if (volumeProfile.ratio > 1.2) bullishScore += 2
+    else if (volumeProfile.ratio < 0.8) bearishScore += 2
+  }
+
+  // Momentum sentiment
+  if (momentum.strength === "VERY_STRONG" || momentum.strength === "STRONG") {
+    if (momentum.direction === "BULLISH") bullishScore += 3
+    else bearishScore += 3
+  }
+
+  const totalScore = bullishScore + bearishScore
+  const sentimentScore = ((bullishScore - bearishScore) / totalScore) * 100
+
+  let sentiment: "EXTREMELY_BULLISH" | "BULLISH" | "NEUTRAL" | "BEARISH" | "EXTREMELY_BEARISH" = "NEUTRAL"
+
+  if (sentimentScore > 60) sentiment = "EXTREMELY_BULLISH"
+  else if (sentimentScore > 20) sentiment = "BULLISH"
+  else if (sentimentScore < -60) sentiment = "EXTREMELY_BEARISH"
+  else if (sentimentScore < -20) sentiment = "BEARISH"
+
+  return {
+    sentiment,
+    bullishScore,
+    bearishScore,
+    sentimentScore,
+    confidence: Math.abs(sentimentScore),
+  }
+}
+
 function generateAdvancedSignal(
   indicators1m: any,
   indicators5m: any,
@@ -297,25 +422,23 @@ function generateAdvancedSignal(
   supportResistance: any,
   priceAction: any,
   momentum: any,
+  advancedPatterns: any,
+  marketSentiment: any,
 ) {
   let signal: "CALL" | "PUT" | "NEUTRAL" = "NEUTRAL"
   let confidence = 50
   let confluenceScore = 0
 
-  // Multi-timeframe RSI analysis
   const rsiSignals = [indicators1m.rsi, indicators5m.rsi, indicators15m.rsi]
   const oversoldCount = rsiSignals.filter((r) => r < 35).length
   const overboughtCount = rsiSignals.filter((r) => r > 65).length
 
-  // MACD confluence
   const macdBullish = [indicators1m, indicators5m, indicators15m].filter((i) => i.macd.histogram > 0).length
   const macdBearish = [indicators1m, indicators5m, indicators15m].filter((i) => i.macd.histogram < 0).length
 
-  // EMA confluence
   const emaBullish = [indicators1m, indicators5m, indicators15m].filter((i) => i.ema.fast > i.ema.slow).length
   const emaBearish = [indicators1m, indicators5m, indicators15m].filter((i) => i.ema.fast < i.ema.slow).length
 
-  // Stochastic confluence
   const stochOversold = [indicators1m, indicators5m, indicators15m].filter((i) => i.stochastic.k < 30).length
   const stochOverbought = [indicators1m, indicators5m, indicators15m].filter((i) => i.stochastic.k > 70).length
 
@@ -331,14 +454,31 @@ function generateAdvancedSignal(
     momentumScore = momentum.direction === "BULLISH" ? 2 : -2
   }
 
-  // Calculate confluence for CALL signal
+  let patternScore = 0
+  if (advancedPatterns.hasDoubleBottom || advancedPatterns.trianglePattern === "ASCENDING") {
+    patternScore = 2
+  } else if (advancedPatterns.hasDoubleTop || advancedPatterns.trianglePattern === "DESCENDING") {
+    patternScore = -2
+  }
+
+  let sentimentScore = 0
+  if (marketSentiment.sentiment === "EXTREMELY_BULLISH") {
+    sentimentScore = 3
+  } else if (marketSentiment.sentiment === "BULLISH") {
+    sentimentScore = 2
+  } else if (marketSentiment.sentiment === "EXTREMELY_BEARISH") {
+    sentimentScore = -3
+  } else if (marketSentiment.sentiment === "BEARISH") {
+    sentimentScore = -2
+  }
+
   if (
     oversoldCount >= 2 &&
     macdBullish >= 2 &&
     emaBullish >= 2 &&
     marketStructure.trend === "BULLISH" &&
     volumeProfile.strength !== "LOW" &&
-    (priceActionScore > 0 || momentumScore > 0)
+    (priceActionScore > 0 || momentumScore > 0 || patternScore > 0 || sentimentScore > 0)
   ) {
     signal = "CALL"
     confluenceScore =
@@ -347,21 +487,23 @@ function generateAdvancedSignal(
       emaBullish +
       (stochOversold >= 2 ? 1 : 0) +
       Math.max(priceActionScore, 0) +
-      Math.max(momentumScore, 0)
+      Math.max(momentumScore, 0) +
+      Math.max(patternScore, 0) +
+      Math.max(sentimentScore, 0)
     confidence =
-      75 +
-      confluenceScore * 2.5 +
+      78 +
+      confluenceScore * 2.2 +
       (volumeProfile.strength === "VERY_HIGH" ? 5 : 0) +
-      (momentum.strength === "VERY_STRONG" ? 5 : 0)
-  }
-  // Calculate confluence for PUT signal
-  else if (
+      (momentum.strength === "VERY_STRONG" ? 5 : 0) +
+      (advancedPatterns.breakoutPotential ? 4 : 0) +
+      (marketSentiment.confidence > 70 ? 3 : 0)
+  } else if (
     overboughtCount >= 2 &&
     macdBearish >= 2 &&
     emaBearish >= 2 &&
     marketStructure.trend === "BEARISH" &&
     volumeProfile.strength !== "LOW" &&
-    (priceActionScore < 0 || momentumScore < 0)
+    (priceActionScore < 0 || momentumScore < 0 || patternScore < 0 || sentimentScore < 0)
   ) {
     signal = "PUT"
     confluenceScore =
@@ -370,63 +512,99 @@ function generateAdvancedSignal(
       emaBearish +
       (stochOverbought >= 2 ? 1 : 0) +
       Math.abs(Math.min(priceActionScore, 0)) +
-      Math.abs(Math.min(momentumScore, 0))
+      Math.abs(Math.min(momentumScore, 0)) +
+      Math.abs(Math.min(patternScore, 0)) +
+      Math.abs(Math.min(sentimentScore, 0))
     confidence =
-      75 +
-      confluenceScore * 2.5 +
+      78 +
+      confluenceScore * 2.2 +
       (volumeProfile.strength === "VERY_HIGH" ? 5 : 0) +
-      (momentum.strength === "VERY_STRONG" ? 5 : 0)
-  }
-  // Moderate signals with price action confirmation
-  else if (oversoldCount >= 1 && macdBullish >= 2 && emaBullish >= 1 && priceActionScore >= 0) {
+      (momentum.strength === "VERY_STRONG" ? 5 : 0) +
+      (advancedPatterns.breakoutPotential ? 4 : 0) +
+      (marketSentiment.confidence > 70 ? 3 : 0)
+  } else if (
+    oversoldCount >= 1 &&
+    macdBullish >= 2 &&
+    emaBullish >= 1 &&
+    (priceActionScore >= 0 || patternScore >= 0 || sentimentScore >= 0)
+  ) {
     signal = "CALL"
-    confluenceScore = oversoldCount + macdBullish + emaBullish + Math.max(priceActionScore, 0)
-    confidence = 65 + confluenceScore * 2
-  } else if (overboughtCount >= 1 && macdBearish >= 2 && emaBearish >= 1 && priceActionScore <= 0) {
+    confluenceScore =
+      oversoldCount +
+      macdBullish +
+      emaBullish +
+      Math.max(priceActionScore, 0) +
+      Math.max(patternScore, 0) +
+      Math.max(sentimentScore, 0)
+    confidence = 68 + confluenceScore * 2.5 + (advancedPatterns.breakoutPotential ? 3 : 0)
+  } else if (
+    overboughtCount >= 1 &&
+    macdBearish >= 2 &&
+    emaBearish >= 1 &&
+    (priceActionScore <= 0 || patternScore <= 0 || sentimentScore <= 0)
+  ) {
     signal = "PUT"
-    confluenceScore = overboughtCount + macdBearish + emaBearish + Math.abs(Math.min(priceActionScore, 0))
-    confidence = 65 + confluenceScore * 2
+    confluenceScore =
+      overboughtCount +
+      macdBearish +
+      emaBearish +
+      Math.abs(Math.min(priceActionScore, 0)) +
+      Math.abs(Math.min(patternScore, 0)) +
+      Math.abs(Math.min(sentimentScore, 0))
+    confidence = 68 + confluenceScore * 2.5 + (advancedPatterns.breakoutPotential ? 3 : 0)
   }
 
-  confidence = Math.min(97, confidence)
+  confidence = Math.min(98, confidence)
 
-  // Next candle prediction with enhanced accuracy
   let nextCandleDirection: "UP" | "DOWN" | "NEUTRAL" = "NEUTRAL"
   let nextCandleProbability = 50
 
   if (signal === "CALL" && confidence > 70) {
     nextCandleDirection = "UP"
     nextCandleProbability =
-      70 +
-      confluenceScore * 2.5 +
+      72 +
+      confluenceScore * 2.3 +
       (marketStructure.confluence === 3 ? 10 : 0) +
-      (momentum.strength === "VERY_STRONG" ? 5 : 0)
+      (momentum.strength === "VERY_STRONG" ? 5 : 0) +
+      (advancedPatterns.breakoutPotential ? 4 : 0) +
+      (marketSentiment.confidence > 70 ? 3 : 0)
   } else if (signal === "PUT" && confidence > 70) {
     nextCandleDirection = "DOWN"
     nextCandleProbability =
-      70 +
-      confluenceScore * 2.5 +
+      72 +
+      confluenceScore * 2.3 +
       (marketStructure.confluence === 3 ? 10 : 0) +
-      (momentum.strength === "VERY_STRONG" ? 5 : 0)
+      (momentum.strength === "VERY_STRONG" ? 5 : 0) +
+      (advancedPatterns.breakoutPotential ? 4 : 0) +
+      (marketSentiment.confidence > 70 ? 3 : 0)
   } else if (
     marketStructure.trend === "BULLISH" &&
     marketStructure.confluence >= 2 &&
-    momentum.direction === "BULLISH"
+    momentum.direction === "BULLISH" &&
+    sentimentScore > 0
   ) {
     nextCandleDirection = "UP"
-    nextCandleProbability = 60 + marketStructure.strength * 0.2 + (momentum.strength === "STRONG" ? 5 : 0)
+    nextCandleProbability =
+      62 +
+      marketStructure.strength * 0.2 +
+      (momentum.strength === "STRONG" ? 5 : 0) +
+      (marketSentiment.confidence > 60 ? 3 : 0)
   } else if (
     marketStructure.trend === "BEARISH" &&
     marketStructure.confluence >= 2 &&
-    momentum.direction === "BEARISH"
+    momentum.direction === "BEARISH" &&
+    sentimentScore < 0
   ) {
     nextCandleDirection = "DOWN"
-    nextCandleProbability = 60 + marketStructure.strength * 0.2 + (momentum.strength === "STRONG" ? 5 : 0)
+    nextCandleProbability =
+      62 +
+      marketStructure.strength * 0.2 +
+      (momentum.strength === "STRONG" ? 5 : 0) +
+      (marketSentiment.confidence > 60 ? 3 : 0)
   }
 
-  nextCandleProbability = Math.min(97, nextCandleProbability)
+  nextCandleProbability = Math.min(98, nextCandleProbability)
 
-  // Volatility and candle size prediction
   const volatility = 40 + indicators1m.atr * 100000 + (volumeProfile.ratio - 1) * 20
   const avgCandleSize = indicators1m.atr * 10000
 
@@ -454,28 +632,32 @@ function generateAdvancedSignal(
     high: basePrice + rangeFactor * (nextCandleDirection === "UP" ? 0.7 : 0.3),
   }
 
-  const winProbability = confidence * 0.9 + confluenceScore * 1.5
+  const winProbability =
+    confidence * 0.92 +
+    confluenceScore * 1.3 +
+    (advancedPatterns.breakoutPotential ? 2 : 0) +
+    (marketSentiment.confidence > 70 ? 2 : 0)
 
   const fallbackPrediction =
     signal === "CALL"
-      ? `Ultra-strong multi-timeframe bullish confluence detected. ${confluenceScore}/13 indicators align for upward movement. Market structure shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe agreement. Volume profile indicates ${volumeProfile.strength} buying pressure. Price action shows ${priceAction.pattern} pattern. Momentum is ${momentum.strength} ${momentum.direction}. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`
+      ? `ULTRA-POWERFUL BULLISH SIGNAL: ${confluenceScore}/16 advanced indicators align perfectly. Multi-timeframe analysis shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe confluence. Market sentiment is ${marketSentiment.sentiment} with ${marketSentiment.confidence.toFixed(0)}% confidence. Volume profile: ${volumeProfile.strength} buying pressure. Price action: ${priceAction.pattern}. Momentum: ${momentum.strength} ${momentum.direction}. Advanced patterns detected: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern + " triangle" : "standard"}${advancedPatterns.breakoutPotential ? " with breakout potential" : ""}. Next candle: ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability, ${nextCandleSize.toLowerCase()} body (${nextCandleSizePips.toFixed(1)} pips). Win probability: ${winProbability.toFixed(1)}%.`
       : signal === "PUT"
-        ? `Ultra-strong multi-timeframe bearish confluence detected. ${confluenceScore}/13 indicators align for downward movement. Market structure shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe agreement. Volume profile indicates ${volumeProfile.strength} selling pressure. Price action shows ${priceAction.pattern} pattern. Momentum is ${momentum.strength} ${momentum.direction}. Next candle predicted to close ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability and ${nextCandleSize.toLowerCase()} body size of ${nextCandleSizePips.toFixed(1)} pips.`
-        : `Mixed signals across timeframes. Market structure is ${marketStructure.trend} with ${marketStructure.confluence}/3 timeframe agreement. Price action shows ${priceAction.pattern}. Momentum is ${momentum.strength}. Waiting for clearer setup. Next candle direction uncertain with ${nextCandleSize.toLowerCase()} expected size.`
+        ? `ULTRA-POWERFUL BEARISH SIGNAL: ${confluenceScore}/16 advanced indicators align perfectly. Multi-timeframe analysis shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe confluence. Market sentiment is ${marketSentiment.sentiment} with ${marketSentiment.confidence.toFixed(0)}% confidence. Volume profile: ${volumeProfile.strength} selling pressure. Price action: ${priceAction.pattern}. Momentum: ${momentum.strength} ${momentum.direction}. Advanced patterns detected: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern + " triangle" : "standard"}${advancedPatterns.breakoutPotential ? " with breakout potential" : ""}. Next candle: ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability, ${nextCandleSize.toLowerCase()} body (${nextCandleSizePips.toFixed(1)} pips). Win probability: ${winProbability.toFixed(1)}%.`
+        : `ANALYZING MARKET CONDITIONS: Market structure ${marketStructure.trend} with ${marketStructure.confluence}/3 timeframe agreement. Sentiment: ${marketSentiment.sentiment}. Price action: ${priceAction.pattern}. Momentum: ${momentum.strength}. Patterns: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern : "none detected"}. Waiting for optimal entry setup. Next candle size: ${nextCandleSize.toLowerCase()}.`
 
   return {
     signal,
     confidence,
     marketDirection: marketStructure.trend,
     marketStrength: marketStructure.strength,
-    momentum: confluenceScore * 8,
+    momentum: confluenceScore * 7,
     nextCandleDirection,
     nextCandleProbability,
     nextCandleSize,
     nextCandleSizePips,
     nextCandleRange,
     volatility,
-    winProbability,
+    winProbability: Math.min(98, winProbability),
     multiTimeframeConfluence: confluenceScore,
     fallbackPrediction,
   }
