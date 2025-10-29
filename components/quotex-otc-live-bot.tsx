@@ -342,7 +342,7 @@ export function QuotexOTCLiveBot() {
         const secondsLeft = getSecondsUntilNextRound()
         setCountdown(secondsLeft)
 
-        if (secondsLeft === 57 || secondsLeft === 0) {
+        if (secondsLeft === 56 || secondsLeft === 0) {
           analyzeMarket()
           startMultiAssetMonitoring()
           syncWithQuotexTime()

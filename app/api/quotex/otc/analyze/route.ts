@@ -4,17 +4,25 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { asset, timeframe } = body
 
-  await new Promise((resolve) => setTimeout(resolve, 5))
+  await new Promise((resolve) => setTimeout(resolve, 2))
 
   const basePrice = getBasePriceForAsset(asset)
 
-  const candles1m = generateCandleData(basePrice, 150, 0.0001) // Increased from 100 to 150
-  const candles5m = generateCandleData(basePrice, 36, 0.0003) // Increased from 24 to 36
-  const candles15m = generateCandleData(basePrice, 12, 0.0005) // Increased from 8 to 12
+  const candles1m = generateCandleData(basePrice, 200, 0.0001) // Increased from 150 to 200
+  const candles5m = generateCandleData(basePrice, 48, 0.0003) // Increased from 36 to 48
+  const candles15m = generateCandleData(basePrice, 16, 0.0005) // Increased from 12 to 16
 
   const indicators1m = calculateAdvancedIndicators(candles1m, basePrice)
   const indicators5m = calculateAdvancedIndicators(candles5m, basePrice)
   const indicators15m = calculateAdvancedIndicators(candles15m, basePrice)
+
+  const ichimoku1m = calculateIchimoku(candles1m)
+  const ichimoku5m = calculateIchimoku(candles5m)
+  const ichimoku15m = calculateIchimoku(candles15m)
+
+  const fibonacci = calculateFibonacci(candles1m, basePrice)
+
+  const pivotPoints = calculatePivotPoints(candles1m)
 
   const marketStructure = analyzeMarketStructure(candles1m, candles5m, candles15m)
 
@@ -30,10 +38,19 @@ export async function POST(request: NextRequest) {
 
   const marketSentiment = analyzeMarketSentiment(indicators1m, indicators5m, indicators15m, volumeProfile, momentum)
 
-  const signalAnalysis = generateAdvancedSignal(
+  const orderFlow = analyzeOrderFlow(candles1m, volumeProfile)
+
+  const microstructure = analyzeMarketMicrostructure(candles1m, volumeProfile, orderFlow)
+
+  const signalAnalysis = generateMaxPowerSignal(
     indicators1m,
     indicators5m,
     indicators15m,
+    ichimoku1m,
+    ichimoku5m,
+    ichimoku15m,
+    fibonacci,
+    pivotPoints,
     marketStructure,
     volumeProfile,
     supportResistance,
@@ -41,6 +58,8 @@ export async function POST(request: NextRequest) {
     momentum,
     advancedPatterns,
     marketSentiment,
+    orderFlow,
+    microstructure,
   )
 
   const aiPrediction = signalAnalysis.fallbackPrediction
@@ -90,6 +109,11 @@ export async function POST(request: NextRequest) {
     priceAction,
     advancedPatterns,
     marketSentiment,
+    ichimoku: ichimoku1m,
+    fibonacci,
+    pivotPoints,
+    orderFlow,
+    microstructure,
   })
 }
 
@@ -413,10 +437,178 @@ function analyzeMarketSentiment(
   }
 }
 
-function generateAdvancedSignal(
+function calculateIchimoku(candles: any[]) {
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+  const closes = candles.map((c) => c.close)
+
+  // Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2
+  const tenkanHigh = Math.max(...highs.slice(-9))
+  const tenkanLow = Math.min(...lows.slice(-9))
+  const tenkanSen = (tenkanHigh + tenkanLow) / 2
+
+  // Kijun-sen (Base Line): (26-period high + 26-period low)/2
+  const kijunHigh = Math.max(...highs.slice(-26))
+  const kijunLow = Math.min(...lows.slice(-26))
+  const kijunSen = (kijunHigh + kijunLow) / 2
+
+  // Senkou Span A (Leading Span A): (Conversion Line + Base Line)/2
+  const senkouSpanA = (tenkanSen + kijunSen) / 2
+
+  // Senkou Span B (Leading Span B): (52-period high + 52-period low)/2
+  const senkouHigh = Math.max(...highs.slice(-52))
+  const senkouLow = Math.min(...lows.slice(-52))
+  const senkouSpanB = (senkouHigh + senkouLow) / 2
+
+  // Chikou Span (Lagging Span): Current closing price plotted 26 periods back
+  const chikouSpan = closes[closes.length - 1]
+
+  const currentPrice = closes[closes.length - 1]
+  const aboveCloud = currentPrice > Math.max(senkouSpanA, senkouSpanB)
+  const belowCloud = currentPrice < Math.min(senkouSpanA, senkouSpanB)
+  const inCloud = !aboveCloud && !belowCloud
+
+  let signal: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL"
+  if (aboveCloud && tenkanSen > kijunSen) signal = "BULLISH"
+  else if (belowCloud && tenkanSen < kijunSen) signal = "BEARISH"
+
+  return {
+    tenkanSen,
+    kijunSen,
+    senkouSpanA,
+    senkouSpanB,
+    chikouSpan,
+    signal,
+    aboveCloud,
+    belowCloud,
+    inCloud,
+  }
+}
+
+function calculateFibonacci(candles: any[], currentPrice: number) {
+  const highs = candles.map((c) => c.high)
+  const lows = candles.map((c) => c.low)
+
+  const swingHigh = Math.max(...highs)
+  const swingLow = Math.min(...lows)
+  const range = swingHigh - swingLow
+
+  return {
+    level_0: swingLow,
+    level_236: swingLow + range * 0.236,
+    level_382: swingLow + range * 0.382,
+    level_500: swingLow + range * 0.5,
+    level_618: swingLow + range * 0.618,
+    level_786: swingLow + range * 0.786,
+    level_100: swingHigh,
+    currentLevel: ((currentPrice - swingLow) / range) * 100,
+  }
+}
+
+function calculatePivotPoints(candles: any[]) {
+  const lastCandle = candles[candles.length - 1]
+  const high = lastCandle.high
+  const low = lastCandle.low
+  const close = lastCandle.close
+
+  const pivot = (high + low + close) / 3
+  const r1 = 2 * pivot - low
+  const r2 = pivot + (high - low)
+  const r3 = high + 2 * (pivot - low)
+  const s1 = 2 * pivot - high
+  const s2 = pivot - (high - low)
+  const s3 = low - 2 * (high - pivot)
+
+  return {
+    pivot,
+    resistance1: r1,
+    resistance2: r2,
+    resistance3: r3,
+    support1: s1,
+    support2: s2,
+    support3: s3,
+  }
+}
+
+function analyzeOrderFlow(candles: any[], volumeProfile: any) {
+  const recentCandles = candles.slice(-20)
+
+  let buyVolume = 0
+  let sellVolume = 0
+
+  recentCandles.forEach((candle) => {
+    if (candle.close > candle.open) {
+      buyVolume += candle.volume
+    } else {
+      sellVolume += candle.volume
+    }
+  })
+
+  const totalVolume = buyVolume + sellVolume
+  const buyPressure = (buyVolume / totalVolume) * 100
+  const sellPressure = (sellVolume / totalVolume) * 100
+
+  const delta = buyVolume - sellVolume
+  const cumulativeDelta = delta
+
+  let orderFlowSignal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL" = "NEUTRAL"
+
+  if (buyPressure > 65) orderFlowSignal = "STRONG_BUY"
+  else if (buyPressure > 55) orderFlowSignal = "BUY"
+  else if (sellPressure > 65) orderFlowSignal = "STRONG_SELL"
+  else if (sellPressure > 55) orderFlowSignal = "SELL"
+
+  return {
+    buyVolume,
+    sellVolume,
+    buyPressure,
+    sellPressure,
+    delta,
+    cumulativeDelta,
+    signal: orderFlowSignal,
+  }
+}
+
+function analyzeMarketMicrostructure(candles: any[], volumeProfile: any, orderFlow: any) {
+  const recentCandles = candles.slice(-10)
+
+  // Calculate bid-ask spread proxy
+  const spreads = recentCandles.map((c) => c.high - c.low)
+  const avgSpread = spreads.reduce((a, b) => a + b, 0) / spreads.length
+
+  // Calculate price impact
+  const priceChanges = []
+  for (let i = 1; i < recentCandles.length; i++) {
+    priceChanges.push(Math.abs(recentCandles[i].close - recentCandles[i - 1].close))
+  }
+  const avgPriceImpact = priceChanges.reduce((a, b) => a + b, 0) / priceChanges.length
+
+  // Liquidity score
+  const liquidityScore = (volumeProfile.ratio * 100) / (avgSpread * 10000)
+
+  let marketQuality: "EXCELLENT" | "GOOD" | "FAIR" | "POOR" = "FAIR"
+  if (liquidityScore > 80) marketQuality = "EXCELLENT"
+  else if (liquidityScore > 60) marketQuality = "GOOD"
+  else if (liquidityScore < 30) marketQuality = "POOR"
+
+  return {
+    avgSpread,
+    avgPriceImpact,
+    liquidityScore,
+    marketQuality,
+    efficiency: Math.min(100, liquidityScore * 1.2),
+  }
+}
+
+function generateMaxPowerSignal(
   indicators1m: any,
   indicators5m: any,
   indicators15m: any,
+  ichimoku1m: any,
+  ichimoku5m: any,
+  ichimoku15m: any,
+  fibonacci: any,
+  pivotPoints: any,
   marketStructure: any,
   volumeProfile: any,
   supportResistance: any,
@@ -424,6 +616,8 @@ function generateAdvancedSignal(
   momentum: any,
   advancedPatterns: any,
   marketSentiment: any,
+  orderFlow: any,
+  microstructure: any,
 ) {
   let signal: "CALL" | "PUT" | "NEUTRAL" = "NEUTRAL"
   let confidence = 50
@@ -441,6 +635,25 @@ function generateAdvancedSignal(
 
   const stochOversold = [indicators1m, indicators5m, indicators15m].filter((i) => i.stochastic.k < 30).length
   const stochOverbought = [indicators1m, indicators5m, indicators15m].filter((i) => i.stochastic.k > 70).length
+
+  const ichimokuBullish = [ichimoku1m, ichimoku5m, ichimoku15m].filter((i) => i.signal === "BULLISH").length
+  const ichimokuBearish = [ichimoku1m, ichimoku5m, ichimoku15m].filter((i) => i.signal === "BEARISH").length
+
+  let fibonacciScore = 0
+  if (fibonacci.currentLevel > 61.8 && fibonacci.currentLevel < 65)
+    fibonacciScore = 2 // Near golden ratio
+  else if (fibonacci.currentLevel < 38.2 && fibonacci.currentLevel > 35) fibonacciScore = -2
+
+  let orderFlowScore = 0
+  if (orderFlow.signal === "STRONG_BUY") orderFlowScore = 3
+  else if (orderFlow.signal === "BUY") orderFlowScore = 2
+  else if (orderFlow.signal === "STRONG_SELL") orderFlowScore = -3
+  else if (orderFlow.signal === "SELL") orderFlowScore = -2
+
+  let microstructureScore = 0
+  if (microstructure.marketQuality === "EXCELLENT") microstructureScore = 2
+  else if (microstructure.marketQuality === "GOOD") microstructureScore = 1
+  else if (microstructure.marketQuality === "POOR") microstructureScore = -1
 
   let priceActionScore = 0
   if (priceAction.pattern === "HAMMER" || priceAction.pattern === "BULLISH_ENGULFING") {
@@ -476,85 +689,103 @@ function generateAdvancedSignal(
     oversoldCount >= 2 &&
     macdBullish >= 2 &&
     emaBullish >= 2 &&
+    ichimokuBullish >= 2 &&
     marketStructure.trend === "BULLISH" &&
     volumeProfile.strength !== "LOW" &&
-    (priceActionScore > 0 || momentumScore > 0 || patternScore > 0 || sentimentScore > 0)
+    (priceActionScore > 0 || momentumScore > 0 || patternScore > 0 || sentimentScore > 0 || orderFlowScore > 0)
   ) {
     signal = "CALL"
     confluenceScore =
       oversoldCount +
       macdBullish +
       emaBullish +
+      ichimokuBullish +
       (stochOversold >= 2 ? 1 : 0) +
       Math.max(priceActionScore, 0) +
       Math.max(momentumScore, 0) +
       Math.max(patternScore, 0) +
-      Math.max(sentimentScore, 0)
+      Math.max(sentimentScore, 0) +
+      Math.max(orderFlowScore, 0) +
+      Math.max(fibonacciScore, 0) +
+      Math.max(microstructureScore, 0)
     confidence =
-      78 +
-      confluenceScore * 2.2 +
+      80 +
+      confluenceScore * 1.8 +
       (volumeProfile.strength === "VERY_HIGH" ? 5 : 0) +
       (momentum.strength === "VERY_STRONG" ? 5 : 0) +
       (advancedPatterns.breakoutPotential ? 4 : 0) +
-      (marketSentiment.confidence > 70 ? 3 : 0)
+      (marketSentiment.confidence > 70 ? 3 : 0) +
+      (orderFlow.signal === "STRONG_BUY" ? 3 : 0) +
+      (microstructure.marketQuality === "EXCELLENT" ? 2 : 0)
   } else if (
     overboughtCount >= 2 &&
     macdBearish >= 2 &&
     emaBearish >= 2 &&
+    ichimokuBearish >= 2 &&
     marketStructure.trend === "BEARISH" &&
     volumeProfile.strength !== "LOW" &&
-    (priceActionScore < 0 || momentumScore < 0 || patternScore < 0 || sentimentScore < 0)
+    (priceActionScore < 0 || momentumScore < 0 || patternScore < 0 || sentimentScore < 0 || orderFlowScore < 0)
   ) {
     signal = "PUT"
     confluenceScore =
       overboughtCount +
       macdBearish +
       emaBearish +
+      ichimokuBearish +
       (stochOverbought >= 2 ? 1 : 0) +
       Math.abs(Math.min(priceActionScore, 0)) +
       Math.abs(Math.min(momentumScore, 0)) +
       Math.abs(Math.min(patternScore, 0)) +
-      Math.abs(Math.min(sentimentScore, 0))
+      Math.abs(Math.min(sentimentScore, 0)) +
+      Math.abs(Math.min(orderFlowScore, 0)) +
+      Math.abs(Math.min(fibonacciScore, 0)) +
+      Math.abs(Math.min(microstructureScore, 0))
     confidence =
-      78 +
-      confluenceScore * 2.2 +
+      80 +
+      confluenceScore * 1.8 +
       (volumeProfile.strength === "VERY_HIGH" ? 5 : 0) +
       (momentum.strength === "VERY_STRONG" ? 5 : 0) +
       (advancedPatterns.breakoutPotential ? 4 : 0) +
-      (marketSentiment.confidence > 70 ? 3 : 0)
+      (marketSentiment.confidence > 70 ? 3 : 0) +
+      (orderFlow.signal === "STRONG_SELL" ? 3 : 0) +
+      (microstructure.marketQuality === "EXCELLENT" ? 2 : 0)
   } else if (
     oversoldCount >= 1 &&
     macdBullish >= 2 &&
     emaBullish >= 1 &&
-    (priceActionScore >= 0 || patternScore >= 0 || sentimentScore >= 0)
+    (priceActionScore >= 0 || patternScore >= 0 || sentimentScore >= 0 || orderFlowScore >= 0)
   ) {
     signal = "CALL"
     confluenceScore =
       oversoldCount +
       macdBullish +
       emaBullish +
+      ichimokuBullish +
       Math.max(priceActionScore, 0) +
       Math.max(patternScore, 0) +
-      Math.max(sentimentScore, 0)
-    confidence = 68 + confluenceScore * 2.5 + (advancedPatterns.breakoutPotential ? 3 : 0)
+      Math.max(sentimentScore, 0) +
+      Math.max(orderFlowScore, 0)
+    confidence = 70 + confluenceScore * 2.2 + (advancedPatterns.breakoutPotential ? 3 : 0)
   } else if (
     overboughtCount >= 1 &&
     macdBearish >= 2 &&
     emaBearish >= 1 &&
-    (priceActionScore <= 0 || patternScore <= 0 || sentimentScore <= 0)
+    (priceActionScore <= 0 || patternScore <= 0 || sentimentScore <= 0 || orderFlowScore <= 0)
   ) {
     signal = "PUT"
     confluenceScore =
       overboughtCount +
       macdBearish +
       emaBearish +
+      ichimokuBearish +
       Math.abs(Math.min(priceActionScore, 0)) +
       Math.abs(Math.min(patternScore, 0)) +
-      Math.abs(Math.min(sentimentScore, 0))
-    confidence = 68 + confluenceScore * 2.5 + (advancedPatterns.breakoutPotential ? 3 : 0)
+      Math.abs(Math.min(sentimentScore, 0)) +
+      Math.abs(Math.min(orderFlowScore, 0))
+    confidence = 70 + confluenceScore * 2.2 + (advancedPatterns.breakoutPotential ? 3 : 0)
   }
 
-  confidence = Math.min(98, confidence)
+  confidence = Math.min(99, confidence)
 
   let nextCandleDirection: "UP" | "DOWN" | "NEUTRAL" = "NEUTRAL"
   let nextCandleProbability = 50
@@ -562,21 +793,23 @@ function generateAdvancedSignal(
   if (signal === "CALL" && confidence > 70) {
     nextCandleDirection = "UP"
     nextCandleProbability =
-      72 +
-      confluenceScore * 2.3 +
+      75 +
+      confluenceScore * 2.0 +
       (marketStructure.confluence === 3 ? 10 : 0) +
       (momentum.strength === "VERY_STRONG" ? 5 : 0) +
       (advancedPatterns.breakoutPotential ? 4 : 0) +
-      (marketSentiment.confidence > 70 ? 3 : 0)
+      (marketSentiment.confidence > 70 ? 3 : 0) +
+      (orderFlow.signal === "STRONG_BUY" ? 3 : 0)
   } else if (signal === "PUT" && confidence > 70) {
     nextCandleDirection = "DOWN"
     nextCandleProbability =
-      72 +
-      confluenceScore * 2.3 +
+      75 +
+      confluenceScore * 2.0 +
       (marketStructure.confluence === 3 ? 10 : 0) +
       (momentum.strength === "VERY_STRONG" ? 5 : 0) +
       (advancedPatterns.breakoutPotential ? 4 : 0) +
-      (marketSentiment.confidence > 70 ? 3 : 0)
+      (marketSentiment.confidence > 70 ? 3 : 0) +
+      (orderFlow.signal === "STRONG_SELL" ? 3 : 0)
   } else if (
     marketStructure.trend === "BULLISH" &&
     marketStructure.confluence >= 2 &&
@@ -585,7 +818,7 @@ function generateAdvancedSignal(
   ) {
     nextCandleDirection = "UP"
     nextCandleProbability =
-      62 +
+      65 +
       marketStructure.strength * 0.2 +
       (momentum.strength === "STRONG" ? 5 : 0) +
       (marketSentiment.confidence > 60 ? 3 : 0)
@@ -597,13 +830,13 @@ function generateAdvancedSignal(
   ) {
     nextCandleDirection = "DOWN"
     nextCandleProbability =
-      62 +
+      65 +
       marketStructure.strength * 0.2 +
       (momentum.strength === "STRONG" ? 5 : 0) +
       (marketSentiment.confidence > 60 ? 3 : 0)
   }
 
-  nextCandleProbability = Math.min(98, nextCandleProbability)
+  nextCandleProbability = Math.min(99, nextCandleProbability)
 
   const volatility = 40 + indicators1m.atr * 100000 + (volumeProfile.ratio - 1) * 20
   const avgCandleSize = indicators1m.atr * 10000
@@ -633,31 +866,32 @@ function generateAdvancedSignal(
   }
 
   const winProbability =
-    confidence * 0.92 +
-    confluenceScore * 1.3 +
+    confidence * 0.95 +
+    confluenceScore * 1.2 +
     (advancedPatterns.breakoutPotential ? 2 : 0) +
-    (marketSentiment.confidence > 70 ? 2 : 0)
+    (marketSentiment.confidence > 70 ? 2 : 0) +
+    (orderFlow.signal === "STRONG_BUY" || orderFlow.signal === "STRONG_SELL" ? 2 : 0)
 
   const fallbackPrediction =
     signal === "CALL"
-      ? `ULTRA-POWERFUL BULLISH SIGNAL: ${confluenceScore}/16 advanced indicators align perfectly. Multi-timeframe analysis shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe confluence. Market sentiment is ${marketSentiment.sentiment} with ${marketSentiment.confidence.toFixed(0)}% confidence. Volume profile: ${volumeProfile.strength} buying pressure. Price action: ${priceAction.pattern}. Momentum: ${momentum.strength} ${momentum.direction}. Advanced patterns detected: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern + " triangle" : "standard"}${advancedPatterns.breakoutPotential ? " with breakout potential" : ""}. Next candle: ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability, ${nextCandleSize.toLowerCase()} body (${nextCandleSizePips.toFixed(1)} pips). Win probability: ${winProbability.toFixed(1)}%.`
+      ? `MAX-POWER BULLISH SIGNAL: ${confluenceScore}/20+ advanced indicators align. Multi-timeframe: ${marketStructure.trend} (${marketStructure.confluence}/3 confluence). Sentiment: ${marketSentiment.sentiment} (${marketSentiment.confidence.toFixed(0)}%). Volume: ${volumeProfile.strength}. Ichimoku: ${ichimokuBullish}/3 bullish. Order Flow: ${orderFlow.signal} (${orderFlow.buyPressure.toFixed(0)}% buy pressure). Price Action: ${priceAction.pattern}. Momentum: ${momentum.strength} ${momentum.direction}. Patterns: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern : "standard"}${advancedPatterns.breakoutPotential ? " + breakout" : ""}. Fibonacci: ${fibonacci.currentLevel.toFixed(1)}%. Market Quality: ${microstructure.marketQuality}. Next candle: ${nextCandleDirection} (${nextCandleProbability.toFixed(0)}%), ${nextCandleSize.toLowerCase()} (${nextCandleSizePips.toFixed(1)} pips). Win: ${winProbability.toFixed(1)}%.`
       : signal === "PUT"
-        ? `ULTRA-POWERFUL BEARISH SIGNAL: ${confluenceScore}/16 advanced indicators align perfectly. Multi-timeframe analysis shows ${marketStructure.trend} trend with ${marketStructure.confluence}/3 timeframe confluence. Market sentiment is ${marketSentiment.sentiment} with ${marketSentiment.confidence.toFixed(0)}% confidence. Volume profile: ${volumeProfile.strength} selling pressure. Price action: ${priceAction.pattern}. Momentum: ${momentum.strength} ${momentum.direction}. Advanced patterns detected: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern + " triangle" : "standard"}${advancedPatterns.breakoutPotential ? " with breakout potential" : ""}. Next candle: ${nextCandleDirection} with ${nextCandleProbability.toFixed(0)}% probability, ${nextCandleSize.toLowerCase()} body (${nextCandleSizePips.toFixed(1)} pips). Win probability: ${winProbability.toFixed(1)}%.`
-        : `ANALYZING MARKET CONDITIONS: Market structure ${marketStructure.trend} with ${marketStructure.confluence}/3 timeframe agreement. Sentiment: ${marketSentiment.sentiment}. Price action: ${priceAction.pattern}. Momentum: ${momentum.strength}. Patterns: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern : "none detected"}. Waiting for optimal entry setup. Next candle size: ${nextCandleSize.toLowerCase()}.`
+        ? `MAX-POWER BEARISH SIGNAL: ${confluenceScore}/20+ advanced indicators align. Multi-timeframe: ${marketStructure.trend} (${marketStructure.confluence}/3 confluence). Sentiment: ${marketSentiment.sentiment} (${marketSentiment.confidence.toFixed(0)}%). Volume: ${volumeProfile.strength}. Ichimoku: ${ichimokuBearish}/3 bearish. Order Flow: ${orderFlow.signal} (${orderFlow.sellPressure.toFixed(0)}% sell pressure). Price Action: ${priceAction.pattern}. Momentum: ${momentum.strength} ${momentum.direction}. Patterns: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern : "standard"}${advancedPatterns.breakoutPotential ? " + breakout" : ""}. Fibonacci: ${fibonacci.currentLevel.toFixed(1)}%. Market Quality: ${microstructure.marketQuality}. Next candle: ${nextCandleDirection} (${nextCandleProbability.toFixed(0)}%), ${nextCandleSize.toLowerCase()} (${nextCandleSizePips.toFixed(1)} pips). Win: ${winProbability.toFixed(1)}%.`
+        : `ANALYZING: Market ${marketStructure.trend} (${marketStructure.confluence}/3). Sentiment: ${marketSentiment.sentiment}. Ichimoku: ${ichimoku1m.signal}. Order Flow: ${orderFlow.signal}. Price Action: ${priceAction.pattern}. Momentum: ${momentum.strength}. Patterns: ${advancedPatterns.trianglePattern !== "NONE" ? advancedPatterns.trianglePattern : "none"}. Waiting for optimal setup. Next: ${nextCandleSize.toLowerCase()}.`
 
   return {
     signal,
     confidence,
     marketDirection: marketStructure.trend,
     marketStrength: marketStructure.strength,
-    momentum: confluenceScore * 7,
+    momentum: confluenceScore * 5,
     nextCandleDirection,
     nextCandleProbability,
     nextCandleSize,
     nextCandleSizePips,
     nextCandleRange,
     volatility,
-    winProbability: Math.min(98, winProbability),
+    winProbability: Math.min(99, winProbability),
     multiTimeframeConfluence: confluenceScore,
     fallbackPrediction,
   }
